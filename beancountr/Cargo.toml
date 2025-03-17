@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ariadne = { version = "0.5.1", features = ["auto-color"] }
+chrono = "0.4.40"
+chumsky = "0.9.3"
+rust_decimal = "1.36.0"

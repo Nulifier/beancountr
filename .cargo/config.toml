@@ -1,0 +1,4 @@
+[alias]
+coverage = "llvm-cov"
+coverage-lcov = "llvm-cov --lcov --output-path lcov.info"
+coverage-html = "llvm-cov --html"

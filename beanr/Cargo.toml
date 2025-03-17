@@ -1,0 +1,8 @@
+[package]
+name = "beanr"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+beancountr = { path = "../beancountr" }
+clap = { version = "4.5.31", features = ["derive"] }
