@@ -8,20 +8,22 @@ use super::{
 	types::{Account, Amount, BookingMethod, Commodity},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Metadata {
 	String(String),
 	Account(Account),
-	Commodity(Commodity),
 	Date(NaiveDate),
-	Tags(HashSet<String>),
+	Commodity(Commodity),
+	Tags(String),
+	Bool(bool),
+	None,
 	Number(Decimal),
 	Amount(Amount),
 }
 
 pub type MetadataMap = HashMap<String, Metadata>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Posting {
 	account: Account,
 	units: Option<Amount>,
@@ -31,14 +33,14 @@ pub struct Posting {
 	meta: MetadataMap,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Directive {
-	date: NaiveDate,
-	kind: DirectiveKind,
-	meta: MetadataMap,
+	pub date: NaiveDate,
+	pub kind: DirectiveKind,
+	pub meta: MetadataMap,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DirectiveKind {
 	Open(Account, Vec<Commodity>, Option<BookingMethod>),
 	Close(Account),
@@ -100,4 +102,10 @@ pub enum DirectiveKind {
 		/// directives of the same type by the parser.)
 		values: Vec<Metadata>,
 	},
+}
+
+impl Directive {
+	pub fn new(date: NaiveDate, kind: DirectiveKind, meta: MetadataMap) -> Self {
+		Self { date, kind, meta }
+	}
 }

@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use super::types::Commodity;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Cost {
 	/// Per-unit cost.
 	number: Decimal,
@@ -25,7 +25,7 @@ pub struct Cost {
 /// particular lot and produce an instance of Cost. Any of the fields of this
 /// object may be left unspecified, in which case they take the special value
 /// "NA" (see below), if the field was absent from the input.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CostSpec {
 	number_per: Option<Decimal>,
 	number_total: Option<Decimal>,
@@ -36,7 +36,7 @@ pub struct CostSpec {
 }
 
 // Either a cost or a cost spec.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CostOrSpec {
 	Cost(Cost),
 	Spec(CostSpec),
