@@ -23,8 +23,7 @@ pub struct Cost {
 /// A stand-in for an "incomplete" Cost, that is, a container all the data that
 /// was provided by the user in the input in order to resolve this lot to a
 /// particular lot and produce an instance of Cost. Any of the fields of this
-/// object may be left unspecified, in which case they take the special value
-/// "NA" (see below), if the field was absent from the input.
+/// object may be left unspecified.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CostSpec {
 	number_per: Option<Decimal>,

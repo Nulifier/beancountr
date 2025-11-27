@@ -30,7 +30,27 @@ pub struct Posting {
 	cost: Option<CostOrSpec>,
 	price: Option<Amount>,
 	flag: Option<char>,
-	meta: MetadataMap,
+	pub meta: MetadataMap,
+}
+
+impl Posting {
+	pub fn new(
+		account: Account,
+		units: Option<Amount>,
+		cost: Option<CostOrSpec>,
+		price: Option<Amount>,
+		flag: Option<char>,
+		meta: MetadataMap,
+	) -> Self {
+		Self {
+			account,
+			units,
+			cost,
+			price,
+			flag,
+			meta,
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq)]

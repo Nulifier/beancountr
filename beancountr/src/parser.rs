@@ -1,4 +1,4 @@
-use crate::core::directive::{Directive, DirectiveKind, Metadata};
+use crate::core::directive::{Directive, DirectiveKind, Metadata, MetadataMap, Posting};
 use crate::core::types::{Account, Amount, Commodity};
 use ariadne::{sources, Color, Fmt, Label, Report, ReportKind};
 use chrono::{Datelike, NaiveDate};
@@ -505,10 +505,6 @@ pub fn parser<F: Fn(usize) -> usize>(
 		Token::Tag(s) => s,
 	};
 
-	// let link = select! {
-	// 	Token::Link(s) => s,
-	// };
-
 	let bool_ = select! {
 		Token::Bool(b) => b,
 	};
@@ -532,6 +528,7 @@ pub fn parser<F: Fn(usize) -> usize>(
 	.then_ignore(end_of_line.clone());
 
 	let metadata = metadata_line
+		.clone()
 		.repeated()
 		.map(|pairs| pairs.into_iter().collect())
 		.boxed();
@@ -665,8 +662,101 @@ pub fn parser<F: Fn(usize) -> usize>(
 		})
 		.boxed();
 
-	// let transaction_directive = date
-	// 	.then_ignore(just(Token::Transaction))
+	let capital = select! {
+		Token::Capital(c) => c,
+	};
+
+	// Valid flags: !&#?%* and Capitals
+	let flag = just(Token::Transaction)
+		.to('*')
+		.or(just(Token::Exclamation).to('!'))
+		.or(just(Token::Ampersand).to('&'))
+		.or(just(Token::Hash).to('#'))
+		.or(just(Token::Question).to('?'))
+		.or(just(Token::Percent).to('%'))
+		.or(just(Token::Asterisk).to('*'))
+		.or(capital)
+		.boxed();
+
+	enum PostingOrMetadata {
+		Posting(Posting),
+		Metadata(String, Metadata),
+	}
+
+	let posting = flag
+		.clone()
+		.or_not()
+		.then(account)
+		.then_ignore(end_of_line.clone())
+		.map(|(flag, account)| {
+			Posting::new(account, None, None, None, flag, MetadataMap::default())
+		});
+
+	let posting_or_metadata = posting
+		.map(PostingOrMetadata::Posting)
+		.or(metadata_line
+			.clone()
+			.map(|(key, value)| PostingOrMetadata::Metadata(key, value)))
+		.boxed();
+
+	let transaction_directive = date
+		.then(flag)
+		.then(string.or_not())
+		.then(string.or_not())
+		.then_ignore(end_of_line.clone())
+		.then(posting_or_metadata.repeated())
+		.map(|((((date, flag), str_a), str_b), other)| {
+			// If both are present, the first is the payee and the second is the narration
+			// If only the first is present, it is the narration
+			let (payee, narration) = match (str_a, str_b) {
+				(Some(a), Some(b)) => (Some(a), Some(b)),
+				(Some(a), None) => (None, Some(a)),
+				_ => (None, None),
+			};
+
+			let mut tx_meta = MetadataMap::default();
+			let mut postings = vec![];
+			let mut current_posting = None;
+			for item in other {
+				match item {
+					// If the item is a posting, we save the last one and set this one to current
+					PostingOrMetadata::Posting(p) => {
+						if let Some(current) = current_posting.take() {
+							postings.push(current);
+						}
+						current_posting = Some(p);
+					}
+					// If the item is a metadata, we insert it into the current posting
+					PostingOrMetadata::Metadata(k, v) => {
+						if let Some(current) = current_posting.as_mut() {
+							// If there is a current posting, we insert the metadata into it
+							current.meta.insert(k, v);
+						} else {
+							// If there is no current posting, we insert it into the transaction metadata
+							tx_meta.insert(k, v);
+						}
+					}
+				}
+			}
+
+			// If there is a current posting, we push it to the list
+			if let Some(current) = current_posting.take() {
+				postings.push(current);
+			}
+
+			Statement::Directive(Directive::new(
+				date,
+				DirectiveKind::Transaction {
+					flag: Some(flag),
+					payee,
+					narration,
+					tags: HashSet::default(),
+					links: HashSet::default(),
+					postings,
+				},
+				tx_meta,
+			))
+		});
 
 	let note_directive = date
 		.then_ignore(just(Token::Note))
@@ -775,7 +865,7 @@ pub fn parser<F: Fn(usize) -> usize>(
 		commodity_directive,
 		pad_directive,
 		balance_directive,
-		// transaction_directive,
+		transaction_directive,
 		note_directive,
 		event_directive,
 		query_directive,
@@ -807,6 +897,7 @@ pub fn parser<F: Fn(usize) -> usize>(
 		.then_ignore(end())
 }
 
+/// Parses a string and returns a vector of statements and a vector of errors.
 pub fn parse_str(filename: Rc<str>, src: &str) -> (Option<Vec<Statement>>, Vec<Simple<String>>) {
 	// Create a line number lookup table
 	let mut line_map = BTreeMap::new();
@@ -853,6 +944,8 @@ pub fn parse_str(filename: Rc<str>, src: &str) -> (Option<Vec<Statement>>, Vec<S
 	)
 }
 
+/// Prints the errors to the console
+/// using the `ariadne` crate for better formatting.
 pub fn print_errors(filename: Rc<str>, src: &str, errors: Vec<Simple<String>>) {
 	errors.into_iter().for_each(|e| {
 		let report = Report::build(ReportKind::Error, (filename.clone(), e.span()));
@@ -1377,6 +1470,42 @@ mod tests {
 					]),
 				)),
 			],
+		);
+	}
+
+	#[test]
+	fn test_parser_tx() {
+		let filename: Rc<str> = Rc::from("test");
+		let src = r#"
+			2025-01-01 txn "Cafe Mogador" "Lamb tagine with wine"
+				Liabilities:CreditCard -37.45 USD
+				Expenses:Restaurants
+		"#;
+
+		let date = NaiveDate::from_str("2025-01-01").unwrap();
+
+		let (statements, _errors) = parse_str(filename.clone(), src);
+
+		assert_eq!(
+			statements.unwrap(),
+			vec![Statement::Directive(Directive::new(
+				date,
+				DirectiveKind::Custom {
+					kind: "budget".to_string(),
+					values: vec![
+						Metadata::String("...".to_string()),
+						Metadata::Bool(true),
+						Metadata::Amount(Amount::new(
+							Decimal::from_str("4.30").unwrap(),
+							"USD".parse().unwrap()
+						)),
+					],
+				},
+				HashMap::from([
+					("filename".to_string(), Metadata::String("test".to_string())),
+					("lineno".to_string(), Metadata::Number(Decimal::from(1))),
+				]),
+			)),],
 		);
 	}
 }
